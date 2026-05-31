@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -35,11 +35,11 @@ sso_registration_scopes = sso:account:access`,
 			return fmt.Errorf("failed to add SSO session: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ SSO session '%s' added successfully to ~/.aws/config\n", sessionName)
+		tui.PrintSuccess(fmt.Sprintf("SSO session '%s' added successfully to ~/.aws/config", sessionName))
 
-		// Automatically generate profiles for the new SSO session
-		util.InfoColor.Println("\nGenerating profiles for SSO session...")
-		return runSSOGenerate(sessionName)
+		// Automatically sync profiles for the new SSO session
+		tui.PrintInfo("Syncing profiles for SSO session...")
+		return runSSOUpdate(sessionName)
 	},
 }
 

@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,7 +24,7 @@ var exportCmd = &cobra.Command{
 			outputFile = args[0]
 		}
 
-		util.InfoColor.Printf("Exporting AWS configuration to: %s\n", util.BoldColor.Sprint(outputFile))
+		tui.PrintInfo(fmt.Sprintf("Exporting AWS configuration to: %s", tui.FormatBold(outputFile)))
 
 		// Get profiles
 		profiles, err := aws.ListProfilesDetailed()
@@ -81,8 +81,8 @@ var exportCmd = &cobra.Command{
 			return fmt.Errorf("failed to write export data: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ Export complete: %d profiles, %d SSO sessions\n", len(profiles), len(ssoSessions))
-		util.InfoColor.Printf("File saved: %s\n", outputFile)
+		tui.PrintSuccess(fmt.Sprintf("Export complete: %d profiles, %d SSO sessions", len(profiles), len(ssoSessions)))
+		tui.PrintMuted(fmt.Sprintf("File saved: %s", outputFile))
 		return nil
 	},
 }

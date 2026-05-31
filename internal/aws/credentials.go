@@ -83,6 +83,32 @@ func HasValidCachedCredentials(profileName string) bool {
 	return getCachedCreds(profileName) != nil
 }
 
+// CachedCredentialsExpiry returns the expiration time of the cached credentials
+// for a profile, if any. The second return value is false when no cache file
+// exists or when it cannot be parsed.
+//
+// Unlike HasValidCachedCredentials, this does NOT enforce a minimum TTL — even
+// already-expired entries are returned, so callers can render them as such in
+// status displays.
+func CachedCredentialsExpiry(profileName string) (time.Time, bool) {
+	path, err := credsCachePath(profileName)
+	if err != nil {
+		return time.Time{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	var creds TempCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return time.Time{}, false
+	}
+	if creds.Expires.IsZero() {
+		return time.Time{}, false
+	}
+	return creds.Expires, true
+}
+
 // profileConfig holds the relevant configuration details extracted from a profile.
 type profileConfig struct {
 	MfaSerial     string

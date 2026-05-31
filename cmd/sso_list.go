@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"awsm/internal/aws"
+	"awsm/internal/tui"
 	"awsm/internal/util"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ var ssoListCmd = &cobra.Command{
 
 		if len(sessions) == 0 {
 			if !ssoOutputJSON {
-				util.WarnColor.Println("No SSO sessions found.")
+				tui.PrintWarning("No SSO sessions found.")
 			} else {
 				fmt.Println("[]")
 			}
@@ -52,7 +52,7 @@ var ssoListCmd = &cobra.Command{
 
 		if len(filtered) == 0 {
 			if !ssoOutputJSON {
-				util.WarnColor.Println("No SSO sessions match the specified filters.")
+				tui.PrintWarning("No SSO sessions match the specified filters.")
 			} else {
 				fmt.Println("[]")
 			}
@@ -65,7 +65,7 @@ var ssoListCmd = &cobra.Command{
 			util.SortBy(filtered, func(s1, s2 aws.SSOSessionInfo) bool {
 				return s1.Region < s2.Region
 			})
-		default: // default sort by name
+		default:
 			util.SortBy(filtered, func(s1, s2 aws.SSOSessionInfo) bool {
 				return s1.Name < s2.Name
 			})
@@ -75,9 +75,7 @@ var ssoListCmd = &cobra.Command{
 			return outputSSOSessionsJSON(filtered)
 		}
 
-		// Print detailed sessions
 		printDetailedSSOSessions(filtered)
-
 		return nil
 	},
 }
@@ -89,24 +87,19 @@ func outputSSOSessionsJSON(sessions []aws.SSOSessionInfo) error {
 }
 
 func printDetailedSSOSessions(sessions []aws.SSOSessionInfo) {
-	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00D9FF")).
-		Bold(true)
-
-	fmt.Println(headerStyle.Render("🔐 SSO Sessions"))
-	fmt.Println(headerStyle.Render("═══════════════════════"))
-	fmt.Println()
+	tui.PrintHeader("🔐 SSO Sessions")
+	fmt.Fprintln(os.Stderr)
 
 	for i, s := range sessions {
-		util.SuccessColor.Printf("● Session: %s\n", s.Name)
-		fmt.Printf("  ├── Start URL: %s\n", s.StartURL)
-		fmt.Printf("  ├── Region: %s\n", s.Region)
-		fmt.Printf("  └── Scopes: %s\n", s.Scopes)
+		fmt.Fprintf(os.Stderr, "  %s %s\n", tui.ProfileSSO.Render("●"), tui.SubheaderStyle.Render(s.Name))
+		tui.PrintKeyValue("Start URL", s.StartURL)
+		tui.PrintKeyValue("Region", s.Region)
+		tui.PrintKeyValue("Scopes", s.Scopes)
 		if i < len(sessions)-1 {
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
 }
 
 func init() {

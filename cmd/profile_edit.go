@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -23,7 +22,7 @@ var profileEditCmd = &cobra.Command{
 			return err
 		}
 		if !exists {
-			util.WarnColor.Printf("Profile '%s' does not exist\n", profileName)
+			tui.PrintWarning(fmt.Sprintf("Profile '%s' does not exist", profileName))
 			return nil
 		}
 
@@ -45,11 +44,12 @@ var profileEditCmd = &cobra.Command{
 			return fmt.Errorf("profile '%s' not found", profileName)
 		}
 
-		util.InfoColor.Printf("Editing profile: %s (Type: %s)\n", util.BoldColor.Sprint(profileName), currentProfile.Type)
+		tui.PrintInfo(fmt.Sprintf("Editing profile: %s (Type: %s)",
+			tui.FormatBold(profileName), tui.FormatProfileType(string(currentProfile.Type))))
 
 		switch currentProfile.Type {
 		case aws.ProfileTypeSSO:
-			util.WarnColor.Println("SSO profiles cannot be edited directly. Use 'awsm sso generate' to recreate them.")
+			tui.PrintWarning("SSO profiles cannot be edited directly. Use 'awsm sso generate' to recreate them.")
 			return nil
 		case aws.ProfileTypeIAM:
 			return editIAMProfile(profileName, currentProfile)
@@ -62,103 +62,99 @@ var profileEditCmd = &cobra.Command{
 }
 
 func editIAMProfile(profileName string, current *aws.ProfileInfo) error {
-	util.InfoColor.Println("Current IAM role configuration:")
-	fmt.Printf("  Role ARN: %s\n", current.RoleARN)
-	fmt.Printf("  Source Profile: %s\n", current.SourceProfile)
-	fmt.Printf("  MFA Serial: %s\n", current.MFASerial)
-	fmt.Printf("  Region: %s\n", current.Region)
-	fmt.Println()
+	tui.PrintHeader("Current IAM Role Configuration")
+	tui.PrintKeyValue("Role ARN", current.RoleARN)
+	tui.PrintKeyValue("Source Profile", current.SourceProfile)
+	tui.PrintKeyValue("MFA Serial", current.MFASerial)
+	tui.PrintKeyValue("Region", current.Region)
 
-	roleArn, err := util.PromptForInput(fmt.Sprintf("Role ARN [%s]: ", current.RoleARN))
+	roleArn, err := tui.PromptInput("Role ARN", tui.WithDefault(current.RoleARN))
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(roleArn) == "" {
+	if roleArn == "" {
 		roleArn = current.RoleARN
 	}
 
-	sourceProfile, err := util.PromptForInput(fmt.Sprintf("Source profile [%s]: ", current.SourceProfile))
+	sourceProfile, err := tui.PromptInput("Source profile", tui.WithDefault(current.SourceProfile))
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(sourceProfile) == "" {
+	if sourceProfile == "" {
 		sourceProfile = current.SourceProfile
 	}
 
-	mfaSerial, err := util.PromptForInput(fmt.Sprintf("MFA Serial [%s]: ", current.MFASerial))
+	mfaSerial, err := tui.PromptInput("MFA Serial", tui.WithDefault(current.MFASerial))
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(mfaSerial) == "" {
+	if mfaSerial == "" {
 		mfaSerial = current.MFASerial
 	}
 
-	region, err := util.PromptForInput(fmt.Sprintf("Region [%s]: ", current.Region))
+	region, err := tui.PromptInput("Region", tui.WithDefault(current.Region))
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(region) == "" {
+	if region == "" {
 		region = current.Region
 	}
 
-	// Update profile in place
 	if err := aws.UpdateIAMRoleProfile(profileName, roleArn, sourceProfile, mfaSerial, region); err != nil {
 		return fmt.Errorf("failed to update profile: %w", err)
 	}
 
-	util.SuccessColor.Printf("✔ Profile '%s' updated successfully\n", profileName)
+	tui.PrintSuccess(fmt.Sprintf("Profile '%s' updated successfully", profileName))
 	return nil
 }
 
 func editIAMUserProfile(profileName string, current *aws.ProfileInfo) error {
-	util.InfoColor.Println("Current IAM user profile configuration:")
-	fmt.Printf("  Region: %s\n", current.Region)
-	fmt.Println()
-	util.WarnColor.Println("Note: Access keys cannot be displayed for security reasons")
+	tui.PrintHeader("Current IAM User Configuration")
+	tui.PrintKeyValue("Region", current.Region)
+	tui.PrintWarning("Access keys cannot be displayed for security reasons")
 
-	updateKeys, err := util.PromptForInput("Update access keys? (y/N): ")
+	updateKeys, err := tui.Confirm("Update access keys?")
 	if err != nil {
 		return err
 	}
 
 	var accessKey, secretKey string
-	if strings.ToLower(strings.TrimSpace(updateKeys)) == "y" {
-		accessKey, err = util.PromptForInput("New AWS Access Key ID: ")
+	if updateKeys {
+		accessKey, err = tui.PromptInput("New AWS Access Key ID",
+			tui.WithRequired(), tui.WithPlaceholder("AKIA..."))
 		if err != nil {
 			return err
 		}
 
-		secretKey, err = util.PromptForInput("New AWS Secret Access Key: ")
+		secretKey, err = tui.PromptInput("New AWS Secret Access Key",
+			tui.WithRequired(), tui.WithEchoPassword())
 		if err != nil {
 			return err
 		}
 	}
 
-	region, err := util.PromptForInput(fmt.Sprintf("Region [%s]: ", current.Region))
+	region, err := tui.PromptInput("Region", tui.WithDefault(current.Region))
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(region) == "" {
+	if region == "" {
 		region = current.Region
 	}
 
 	if accessKey != "" && secretKey != "" {
-		// Delete old profile and create new one with new keys
 		if err := aws.DeleteProfile(profileName); err != nil {
 			return fmt.Errorf("failed to delete old profile: %w", err)
 		}
-
 		if err := aws.AddIAMUserProfile(profileName, accessKey, secretKey, region); err != nil {
 			return fmt.Errorf("failed to update profile: %w", err)
 		}
 	} else {
-		// Just update region
 		if err := aws.UpdateProfileRegion(profileName, region); err != nil {
 			return fmt.Errorf("failed to update region: %w", err)
 		}
 	}
 
-	util.SuccessColor.Printf("✔ Profile '%s' updated successfully\n", profileName)
+	tui.PrintSuccess(fmt.Sprintf("Profile '%s' updated successfully", profileName))
 	return nil
 }
 

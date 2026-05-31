@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -26,7 +26,7 @@ var profileChangeRegionCmd = &cobra.Command{
 			return fmt.Errorf("failed to change region: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ Region for profile '%s' changed to '%s'\n", profileName, region)
+		tui.PrintSuccess(fmt.Sprintf("Region for profile '%s' changed to '%s'", profileName, region))
 		return nil
 	},
 }

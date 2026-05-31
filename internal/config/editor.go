@@ -23,6 +23,24 @@ func ExtractProfileConfig(profileContent string) string {
 	return strings.Join(configLines, "\n")
 }
 
+// RemoveAllProfilesForSession removes all profiles that reference a specific sso_session
+// from the config content. Returns the cleaned config and a list of removed profile names.
+func RemoveAllProfilesForSession(configContent, sessionName string) (string, []string) {
+	_, profileContentMap := ParseExistingProfiles(configContent)
+
+	var removed []string
+	for profileName, content := range profileContentMap {
+		// Check if this profile references the session
+		if strings.Contains(content, fmt.Sprintf("sso_session = %s", sessionName)) ||
+			strings.Contains(content, fmt.Sprintf("sso_session=%s", sessionName)) {
+			configContent = RemoveProfileFromConfig(configContent, profileName)
+			removed = append(removed, profileName)
+		}
+	}
+
+	return configContent, removed
+}
+
 // RemoveProfileFromConfig removes a specific profile from the config content
 func RemoveProfileFromConfig(config, profileName string) string {
 	profileHeaderRegex := regexp.MustCompile(fmt.Sprintf(`(?m)^\[profile %s\]`, regexp.QuoteMeta(profileName)))

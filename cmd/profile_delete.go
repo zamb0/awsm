@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -32,18 +31,18 @@ var profileDeleteCmd = &cobra.Command{
 			return err
 		}
 		if !exists {
-			util.WarnColor.Printf("Profile '%s' does not exist\n", profileName)
+			tui.PrintWarning(fmt.Sprintf("Profile '%s' does not exist", profileName))
 			return nil
 		}
 
 		// Confirm deletion unless forced
 		if !forceDelete {
-			confirm, err := util.PromptForInput(fmt.Sprintf("Delete profile '%s'? (y/N): ", profileName))
+			confirmed, err := tui.ConfirmDanger(fmt.Sprintf("Delete profile '%s'?", profileName))
 			if err != nil {
 				return err
 			}
-			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-				util.InfoColor.Println("Deletion cancelled")
+			if !confirmed {
+				tui.PrintMuted("Deletion cancelled")
 				return nil
 			}
 		}
@@ -52,7 +51,7 @@ var profileDeleteCmd = &cobra.Command{
 			return fmt.Errorf("failed to delete profile: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ Profile '%s' deleted successfully\n", profileName)
+		tui.PrintSuccess(fmt.Sprintf("Profile '%s' deleted successfully", profileName))
 		return nil
 	},
 }
@@ -64,31 +63,31 @@ func deleteAllSSOProfiles(ssoSession string) error {
 	}
 
 	if len(profiles) == 0 {
-		util.WarnColor.Printf("No profiles found for SSO session '%s'\n", ssoSession)
+		tui.PrintWarning(fmt.Sprintf("No profiles found for SSO session '%s'", ssoSession))
 		return nil
 	}
 
-	util.InfoColor.Printf("Found %d profiles for SSO session '%s':\n", len(profiles), ssoSession)
+	tui.PrintInfo(fmt.Sprintf("Found %d profiles for SSO session '%s':", len(profiles), ssoSession))
 	for _, profile := range profiles {
-		fmt.Printf("  - %s\n", profile)
+		tui.PrintBullet(profile)
 	}
 
 	if !forceDelete {
-		confirm, err := util.PromptForInput(fmt.Sprintf("Delete all %d profiles? (y/N): ", len(profiles)))
+		confirmed, err := tui.ConfirmDanger(fmt.Sprintf("Delete all %d profiles?", len(profiles)))
 		if err != nil {
 			return err
 		}
-		if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-			util.InfoColor.Println("Deletion cancelled")
+		if !confirmed {
+			tui.PrintMuted("Deletion cancelled")
 			return nil
 		}
 	}
 
 	for _, profile := range profiles {
 		if err := aws.DeleteProfile(profile); err != nil {
-			util.ErrorColor.Printf("Failed to delete profile '%s': %v\n", profile, err)
+			tui.PrintError(fmt.Sprintf("Failed to delete profile '%s': %v", profile, err))
 		} else {
-			util.SuccessColor.Printf("✔ Deleted profile '%s'\n", profile)
+			tui.PrintSuccess(fmt.Sprintf("Deleted profile '%s'", profile))
 		}
 	}
 

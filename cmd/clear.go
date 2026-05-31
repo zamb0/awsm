@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -15,17 +16,17 @@ This effectively clears any active AWS session.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		currentProfile := aws.GetCurrentProfileName()
 		if currentProfile == "" {
-			util.WarnColor.Println("No active profile found to clear.")
+			tui.PrintWarning("No active profile found to clear.")
 			return nil
 		}
 
-		util.InfoColor.Printf("Clearing profile '%s' from default credentials...\n", util.BoldColor.Sprint(currentProfile))
+		tui.PrintInfo(fmt.Sprintf("Clearing profile '%s' from default credentials...", tui.FormatBold(currentProfile)))
 
 		if err := aws.ClearDefaultProfile(); err != nil {
 			return err
 		}
 
-		util.SuccessColor.Println("✔ Default profile cleared successfully.")
+		tui.PrintSuccess("Default profile cleared successfully.")
 		return nil
 	},
 }

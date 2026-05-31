@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -36,7 +35,7 @@ var ssoDeleteCmd = &cobra.Command{
 		}
 
 		if !sessionExists {
-			util.WarnColor.Printf("SSO session '%s' does not exist\n", ssoSession)
+			tui.PrintWarning(fmt.Sprintf("SSO session '%s' does not exist", ssoSession))
 			return nil
 		}
 
@@ -47,23 +46,23 @@ var ssoDeleteCmd = &cobra.Command{
 		}
 
 		// Show what will be deleted
-		util.InfoColor.Printf("SSO session '%s' will be deleted\n", ssoSession)
+		tui.PrintInfo(fmt.Sprintf("SSO session '%s' will be deleted", ssoSession))
 		if len(profiles) > 0 {
-			util.InfoColor.Printf("This will also delete %d associated profiles:\n", len(profiles))
+			tui.PrintInfo(fmt.Sprintf("This will also delete %d associated profiles:", len(profiles)))
 			for _, profile := range profiles {
-				fmt.Printf("  - %s\n", profile)
+				tui.PrintBullet(profile)
 			}
 		}
 
 		// Confirm deletion unless forced
 		if !ssoForceDelete {
 			totalItems := 1 + len(profiles)
-			confirm, err := util.PromptForInput(fmt.Sprintf("Delete SSO session and %d total items? (y/N): ", totalItems))
+			confirmed, err := tui.ConfirmDanger(fmt.Sprintf("Delete SSO session and %d total items?", totalItems))
 			if err != nil {
 				return err
 			}
-			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-				util.InfoColor.Println("Deletion cancelled")
+			if !confirmed {
+				tui.PrintMuted("Deletion cancelled")
 				return nil
 			}
 		}
@@ -71,9 +70,9 @@ var ssoDeleteCmd = &cobra.Command{
 		// Delete associated profiles first
 		for _, profile := range profiles {
 			if err := aws.DeleteProfile(profile); err != nil {
-				util.ErrorColor.Printf("Failed to delete profile '%s': %v\n", profile, err)
+				tui.PrintError(fmt.Sprintf("Failed to delete profile '%s': %v", profile, err))
 			} else {
-				util.SuccessColor.Printf("✔ Deleted profile '%s'\n", profile)
+				tui.PrintSuccess(fmt.Sprintf("Deleted profile '%s'", profile))
 			}
 		}
 
@@ -82,7 +81,7 @@ var ssoDeleteCmd = &cobra.Command{
 			return fmt.Errorf("failed to delete SSO session: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ SSO session '%s' deleted successfully\n", ssoSession)
+		tui.PrintSuccess(fmt.Sprintf("SSO session '%s' deleted successfully", ssoSession))
 		return nil
 	},
 }

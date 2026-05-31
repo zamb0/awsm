@@ -7,12 +7,17 @@ A powerful CLI tool to simplify working with AWS profiles, credentials, and sess
 - **Profile Management**: Easily switch between AWS profiles with interactive selection
 - **SSO Support**: Complete AWS SSO (IAM Identity Center) integration with automatic profile generation
 - **MFA Support**: Streamlined MFA token handling for IAM profiles
+- **Identity Inspection**: `awsm whoami` shows account, ARN, region and credentials TTL at a glance
+- **Run Commands Scoped to a Profile**: `awsm run` injects AWS credentials into a child process without polluting your shell
+- **Shell Prompt Integration**: `awsm prompt` produces a fast, offline status string for use in PS1 / starship
+- **Diagnostics**: `awsm doctor` audits your local setup (config files, permissions, external tools, browsers)
 - **Smart Conflict Resolution**: Intelligent handling of profile name conflicts during creation
 - **Console Access**: Open the AWS console in your browser with proper credentials
 - **Connect & Port Forwarding**: Connect to EC2 instances via SSM and setup advanced port forwarding (RDS, remote hosts)
 - **Region Management**: Easily switch between AWS regions
 - **Search & Discovery**: Powerful search across profiles, account IDs, and SSO sessions with partial matching
 - **Browser Integration**: Open the console in specific Chrome profiles or Firefox containers
+- **Firefox Extension**: First-party [`AWSM Container Opener`](https://addons.mozilla.org/firefox/addon/awsm-container/) add-on published on AMO; `awsm extension install` opens the listing for 1-click permanent install with auto-updates
 - **Shell Completion**: Full autocompletion support for bash, zsh, fish, and PowerShell
 - **Interactive UI**: Beautiful terminal interface with responsive design
 - **Import/Export**: Backup and restore your AWS configuration
@@ -78,6 +83,96 @@ awsm profile delete --force my-profile   # Delete without confirmation
 ```bash
 # Interactive profile selector with arrow keys
 awsm select
+```
+
+### Identity & Status
+
+```bash
+# Show the active identity (account, ARN, region, credentials TTL)
+awsm whoami
+
+# Inspect a specific profile without switching to it
+awsm whoami --profile my-profile
+
+# Machine-readable output for scripts
+awsm whoami --json
+
+# Skip the sts:GetCallerIdentity call (offline / fast)
+awsm whoami --no-call
+```
+
+The TTL is color-coded: green when there's plenty of time left, amber under 30
+minutes, red under 5 minutes or already expired. SSO profiles use the SSO
+access-token cache to compute the remaining lifetime.
+
+### Run Commands With Profile Credentials
+
+`awsm run` resolves credentials for the chosen profile (auto-prompting MFA and
+auto-running `aws sso login` if needed) and executes the given command with
+`AWS_*` environment variables injected. The parent shell is **not** modified.
+
+```bash
+# Use the active profile
+awsm run -- aws s3 ls
+
+# Pin a specific profile / region for the child process
+awsm run --profile prod -- terraform plan
+awsm run --profile dev --region eu-west-1 -- env | grep AWS_
+```
+
+Anything before `--` is parsed as `awsm` flags; everything after is the command
+to execute. The child process's exit code is propagated.
+
+### Shell Prompt Integration
+
+`awsm prompt` prints a compact one-line status string designed to be embedded
+in your shell prompt. It is fast and offline (no AWS API calls).
+
+```bash
+# Default format: "{icon} {profile}:{region} {ttl}"
+awsm prompt
+
+# Custom format
+awsm prompt --format '{profile}@{region} ({ttl})'
+awsm prompt --format '☁ {profile}'
+
+# Disable ANSI colors
+awsm prompt --no-color
+
+# Print nothing if no profile is active (instead of "(no profile)")
+awsm prompt --empty-on-none
+```
+
+Available placeholders: `{profile}`, `{region}`, `{type}`, `{ttl}`, `{account}`,
+`{icon}`.
+
+**Starship example** (`~/.config/starship.toml`):
+
+```toml
+[custom.awsm]
+command = "awsm prompt --no-color"
+when = "awsm profile current"
+format = "[$output]($style) "
+style = "bold cyan"
+```
+
+**Bash/Zsh PS1 example**:
+
+```bash
+PS1='$(awsm prompt --empty-on-none) \w $ '
+```
+
+### Diagnostics
+
+`awsm doctor` audits the local environment and prints a categorized report
+(versions, AWS files and permissions, external tools, awsm config, profiles
+and cache, browsers). It exits non-zero if any check is `FAIL`.
+
+```bash
+awsm doctor
+
+# Machine-readable output (great for bug reports)
+awsm doctor --json
 ```
 
 ### SSO Management
@@ -170,12 +265,22 @@ awsm console --chrome-profile default
 
 #### Firefox Container Integration
 
-For Firefox, AWSM uses the "Open external links in a container" extension to open AWS console links in specific containers.
+For Firefox, AWSM relies on the first-party **AWSM Container Opener**
+extension — published on [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/awsm-container-opener/)
+and maintained in a [dedicated repository](https://github.com/AleG03/awsm-firefox-container).
+It handles the `ext+container:` protocol used by `awsm console --firefox-container`.
 
-**Step 1: Install the Extension**
+**Step 1: Install the extension**
 
-1. Install the [Open external links in a container](https://addons.mozilla.org/en-US/firefox/addon/open-url-in-container/) extension from Firefox Add-ons
-2. The extension allows external links to be opened in specific Firefox containers
+```bash
+# Opens the AMO listing in your browser — click "Add to Firefox"
+awsm extension install
+
+# Show extension info and links
+awsm extension status
+```
+
+The extension installs permanently and auto-updates via AMO.
 
 **Step 2: Use Firefox Containers**
 
@@ -189,7 +294,11 @@ awsm console --firefox-container
 
 **Note**: The container name will match your AWS profile name. If you have a profile named `work-production`, AWSM will try to open the console in a Firefox container named `work-production`.
 
-**Random Colors and Icons**: When AWSM creates a new Firefox container, it automatically assigns a random color and icon from Firefox's available options. This helps visually distinguish between different AWS profiles. Available colors include: blue, turquoise, green, yellow, orange, red, pink, and purple. Available icons include: fingerprint, briefcase, dollar, cart, circle, gift, vacation, food, fruit, pet, tree, and chill.
+**Deterministic colors and icons**: The AWSM Container Opener derives each
+container's color and icon from a hash of its name, so the same AWS profile
+always gets the same visual identity. Existing containers are never
+re-colored. You can toggle URL-supplied color/icon hints in the extension's
+options page if you want the legacy random behavior.
 
 #### Zen Container Integration
 
@@ -437,8 +546,8 @@ region = us-east-1
 This project is licensed under the Business Source License 1.1.
 
 - **Non-Commercial Use**: Free for personal, educational, and non-commercial use
-- **Commercial Use**: Prohibited until 2028-01-01
-- **After 2028-01-01**: Available under Apache License 2.0
+- **Commercial Use**: Prohibited until 2030-01-01
+- **After 2030-01-01**: Available under Apache License 2.0
 
 See the [LICENSE](LICENSE) file for details.
 

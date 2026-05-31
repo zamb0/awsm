@@ -9,7 +9,6 @@ import (
 
 	"awsm/internal/aws"
 	"awsm/internal/tui"
-	"awsm/internal/util"
 
 	"github.com/spf13/cobra"
 )
@@ -113,7 +112,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 
 		// Check for privileged ports on Unix-like systems
 		if localPort < 1024 && os.Geteuid() != 0 {
-			util.WarnColor.Fprintf(os.Stderr, "Warning: Local port %d is a privileged port. You might need sudo or to use a higher port (e.g., -l 8080).\n", localPort)
+			tui.PrintWarning(fmt.Sprintf("Local port %d is a privileged port. You might need sudo or to use a higher port (e.g., -l 8080).", localPort))
 		}
 
 		if remoteHost != "" {
@@ -126,7 +125,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 			paramsJSON, _ := json.Marshal(params)
 			execArgs = append(execArgs, "--parameters", string(paramsJSON))
 
-			util.InfoColor.Fprintf(os.Stderr, "Forwarding localhost:%d -> %s:%d via %s\n", localPort, remoteHost, remotePort, instanceID)
+			tui.PrintInfo(fmt.Sprintf("Forwarding localhost:%d -> %s:%d via %s", localPort, remoteHost, remotePort, instanceID))
 		} else {
 			execArgs = append(execArgs, "--document-name", "AWS-StartPortForwardingSession")
 			params := map[string][]string{
@@ -136,10 +135,10 @@ func runConnect(cmd *cobra.Command, args []string) error {
 			paramsJSON, _ := json.Marshal(params)
 			execArgs = append(execArgs, "--parameters", string(paramsJSON))
 
-			util.InfoColor.Fprintf(os.Stderr, "Forwarding localhost:%d -> instance:%d via %s\n", localPort, remotePort, instanceID)
+			tui.PrintInfo(fmt.Sprintf("Forwarding localhost:%d -> instance:%d via %s", localPort, remotePort, instanceID))
 		}
 	} else {
-		util.InfoColor.Fprintf(os.Stderr, "Connecting to %s...\n", instanceID)
+		tui.PrintInfo(fmt.Sprintf("Connecting to %s...", instanceID))
 	}
 
 	// Execute aws cli

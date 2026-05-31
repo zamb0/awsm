@@ -2,9 +2,7 @@ package browser
 
 import (
 	"awsm/internal/config"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"net/url"
 	"os/exec"
 	"runtime"
@@ -12,36 +10,15 @@ import (
 	"github.com/pkg/browser"
 )
 
-// Available Firefox container colors (from the extension documentation)
-var firefoxColors = []string{
-	"blue", "turquoise", "green", "yellow",
-	"orange", "red", "pink", "purple",
-}
-
-// Available Firefox container icons (from the extension documentation)
-var firefoxIcons = []string{
-	"fingerprint", "briefcase", "dollar", "cart", "circle",
-	"gift", "vacation", "food", "fruit", "pet", "tree", "chill",
-}
-
-// getRandomFirefoxColor returns a random color from the available Firefox container colors
-func getRandomFirefoxColor() string {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(firefoxColors))))
-	if err != nil {
-		// Fallback to a default color if random generation fails
-		return "blue"
-	}
-	return firefoxColors[n.Int64()]
-}
-
-// getRandomFirefoxIcon returns a random icon from the available Firefox container icons
-func getRandomFirefoxIcon() string {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(firefoxIcons))))
-	if err != nil {
-		// Fallback to a default icon if random generation fails
-		return "fingerprint"
-	}
-	return firefoxIcons[n.Int64()]
+// buildContainerURL constructs the ext+container: URL handled by the
+// AWSM Container Opener extension (see extensions/firefox-container).
+// Color and icon are intentionally omitted: the extension derives them
+// deterministically from the container name so the same profile always
+// renders with the same visual identity.
+func buildContainerURL(containerName, targetURL string) string {
+	return fmt.Sprintf("ext+container:name=%s&url=%s",
+		url.QueryEscape(containerName),
+		url.QueryEscape(targetURL))
 }
 
 // OpenURL opens a URL in the specified browser profile/container.
@@ -85,20 +62,11 @@ func openURLInChromeProfile(targetURL, chromeProfileAlias string) error {
 	return cmd.Start()
 }
 
-// openURLInFirefoxContainer opens a URL in a Firefox container with random color and icon
+// openURLInFirefoxContainer opens a URL in the named Firefox container via
+// the AWSM Container Opener extension.
 func openURLInFirefoxContainer(targetURL, containerName string) error {
-	// Generate random color and icon for the container
-	randomColor := getRandomFirefoxColor()
-	randomIcon := getRandomFirefoxIcon()
-
 	var cmd *exec.Cmd
-	// Use the extension's URL format with color and icon parameters
-	// This will create the container with random color/icon if it doesn't exist
-	containerURL := fmt.Sprintf("ext+container:name=%s&color=%s&icon=%s&url=%s",
-		url.QueryEscape(containerName),
-		url.QueryEscape(randomColor),
-		url.QueryEscape(randomIcon),
-		url.QueryEscape(targetURL))
+	containerURL := buildContainerURL(containerName, targetURL)
 
 	switch runtime.GOOS {
 	case "darwin": // macOS
@@ -124,20 +92,12 @@ func openURLInFirefoxContainer(targetURL, containerName string) error {
 	return nil
 }
 
-// openURLInZenContainer opens a URL in a Zen Browser container with random color and icon
+// openURLInZenContainer opens a URL in the named Zen Browser container via
+// the AWSM Container Opener extension (Zen reuses the same ext+container:
+// URL scheme as Firefox).
 func openURLInZenContainer(targetURL, containerName string) error {
-	// Generate random color and icon for the container
-	randomColor := getRandomFirefoxColor()
-	randomIcon := getRandomFirefoxIcon()
-
 	var cmd *exec.Cmd
-	// Use the extension's URL format with color and icon parameters
-	// Zen Browser supports the same ext+container: URL scheme as Firefox
-	containerURL := fmt.Sprintf("ext+container:name=%s&color=%s&icon=%s&url=%s",
-		url.QueryEscape(containerName),
-		url.QueryEscape(randomColor),
-		url.QueryEscape(randomIcon),
-		url.QueryEscape(targetURL))
+	containerURL := buildContainerURL(containerName, targetURL)
 
 	switch runtime.GOOS {
 	case "darwin": // macOS

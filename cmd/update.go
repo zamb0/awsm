@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"awsm/internal/util"
+	"awsm/internal/tui"
 
 	"github.com/spf13/cobra"
 )
@@ -29,7 +29,7 @@ var updateCmd = &cobra.Command{
 	Short: "Update AWSM to the latest version",
 	Long:  `Downloads and installs the latest version of AWSM from GitHub releases.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		util.InfoColor.Println("Checking for updates...")
+		tui.PrintInfo("Checking for updates...")
 
 		// Get latest release info
 		resp, err := http.Get("https://api.github.com/repos/AleG03/awsm/releases/latest")
@@ -50,12 +50,12 @@ var updateCmd = &cobra.Command{
 
 		// Check if we're already on the latest version
 		if version != "dev" && release.TagName == "v"+version {
-			util.SuccessColor.Println("✔ Already on the latest version!")
+			tui.PrintSuccess("Already on the latest version!")
 			return nil
 		}
 
-		util.InfoColor.Printf("Latest version: %s\n", release.TagName)
-		util.InfoColor.Printf("Current version: %s\n", version)
+		tui.PrintInfo(fmt.Sprintf("Latest version: %s", release.TagName))
+		tui.PrintInfo(fmt.Sprintf("Current version: %s", version))
 
 		// Find the appropriate asset for current OS/arch
 		assetName := fmt.Sprintf("awsm_%s_%s_%s",
@@ -81,7 +81,7 @@ var updateCmd = &cobra.Command{
 			return fmt.Errorf("no compatible release found for %s/%s", runtime.GOOS, runtime.GOARCH)
 		}
 
-		util.InfoColor.Printf("Downloading %s...\n", assetName)
+		tui.PrintStep(fmt.Sprintf("Downloading %s...", assetName))
 
 		// Download the release
 		resp, err = http.Get(downloadURL)
@@ -109,8 +109,8 @@ var updateCmd = &cobra.Command{
 			return fmt.Errorf("failed to install update: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ Successfully updated to %s!\n", release.TagName)
-		util.InfoColor.Println("Please restart the command to use the new version.")
+		tui.PrintSuccess(fmt.Sprintf("Successfully updated to %s!", release.TagName))
+		tui.PrintMuted("Please restart the command to use the new version.")
 		return nil
 	},
 }

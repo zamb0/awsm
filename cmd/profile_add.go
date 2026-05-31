@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"fmt"
 	"strings"
 
@@ -27,46 +27,34 @@ var profileAddIAMUserCmd = &cobra.Command{
 		} else if exists {
 			resolvedName, skip := resolveProfileAddConflict(profileName, "iam-user")
 			if skip {
-				util.InfoColor.Println("Profile creation cancelled.")
+				tui.PrintMuted("Profile creation cancelled.")
 				return nil
 			}
 			profileName = resolvedName
 		}
 
-		util.InfoColor.Printf("Adding IAM user profile: %s\n", util.BoldColor.Sprint(profileName))
+		tui.PrintInfo(fmt.Sprintf("Adding IAM user profile: %s", tui.FormatBold(profileName)))
 
-		accessKey, err := util.PromptForInput("AWS Access Key ID: ")
+		accessKey, err := tui.PromptInput("AWS Access Key ID", tui.WithRequired(), tui.WithPlaceholder("AKIA..."))
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(accessKey) == "" {
-			return fmt.Errorf("access key ID is required")
-		}
 
-		secretKey, err := util.PromptForInput("AWS Secret Access Key: ")
+		secretKey, err := tui.PromptInput("AWS Secret Access Key", tui.WithRequired(), tui.WithEchoPassword(), tui.WithPlaceholder("your-secret-key"))
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(secretKey) == "" {
-			return fmt.Errorf("secret access key is required")
-		}
 
-		region, err := util.PromptForInput("Default region (e.g., us-east-1): ")
+		region, err := tui.SelectRegion()
 		if err != nil {
 			return err
-		}
-		if strings.TrimSpace(region) == "" {
-			return fmt.Errorf("region is required")
-		}
-		if !aws.IsValidRegion(region) {
-			return fmt.Errorf("invalid region: %s", region)
 		}
 
 		if err := aws.AddIAMUserProfile(profileName, accessKey, secretKey, region); err != nil {
 			return fmt.Errorf("failed to add IAM user profile: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ IAM user profile '%s' added successfully\n", profileName)
+		tui.PrintSuccess(fmt.Sprintf("IAM user profile '%s' added successfully", profileName))
 		return nil
 	},
 }
@@ -84,75 +72,74 @@ var profileAddIAMRoleCmd = &cobra.Command{
 		} else if exists {
 			resolvedName, skip := resolveProfileAddConflict(profileName, "iam-role")
 			if skip {
-				util.InfoColor.Println("Profile creation cancelled.")
+				tui.PrintMuted("Profile creation cancelled.")
 				return nil
 			}
 			profileName = resolvedName
 		}
 
-		util.InfoColor.Printf("Adding IAM role profile: %s\n", util.BoldColor.Sprint(profileName))
+		tui.PrintInfo(fmt.Sprintf("Adding IAM role profile: %s", tui.FormatBold(profileName)))
 
-		roleArn, err := util.PromptForInput("Role ARN: ")
+		roleArn, err := tui.PromptInput("Role ARN",
+			tui.WithRequired(),
+			tui.WithPlaceholder("arn:aws:iam::123456789012:role/MyRole"))
 		if err != nil {
 			return err
 		}
 
-		sourceProfile, err := util.PromptForInput("Source profile (optional): ")
+		sourceProfile, err := tui.PromptInput("Source profile",
+			tui.WithPlaceholder("optional - leave empty to skip"))
 		if err != nil {
 			return err
 		}
 
-		mfaSerial, err := util.PromptForInput("MFA Serial (optional): ")
+		mfaSerial, err := tui.PromptInput("MFA Serial",
+			tui.WithPlaceholder("optional - arn:aws:iam::...:mfa/user"))
 		if err != nil {
 			return err
 		}
 
-		region, err := util.PromptForInput("Default region (e.g., us-east-1): ")
+		region, err := tui.SelectRegion()
 		if err != nil {
 			return err
-		}
-		if !aws.IsValidRegion(region) {
-			return fmt.Errorf("invalid region: %s", region)
 		}
 
 		if err := aws.AddIAMRoleProfile(profileName, roleArn, strings.TrimSpace(sourceProfile), strings.TrimSpace(mfaSerial), region); err != nil {
 			return fmt.Errorf("failed to add IAM role profile: %w", err)
 		}
 
-		util.SuccessColor.Printf("✔ IAM role profile '%s' added successfully\n", profileName)
+		tui.PrintSuccess(fmt.Sprintf("IAM role profile '%s' added successfully", profileName))
 		return nil
 	},
 }
 
 func resolveProfileAddConflict(profileName, profileType string) (string, bool) {
-	util.WarnColor.Printf("\n⚠ Profile '%s' already exists.\n", profileName)
-	fmt.Println("Choose resolution:")
-	fmt.Println("1. Skip this profile")
-	fmt.Printf("2. Rename to '%s-%s'\n", profileName, profileType)
-	fmt.Println("3. Enter custom name")
-	fmt.Println("4. Overwrite existing profile")
-	fmt.Print("\nEnter choice (1-4): ")
+	tui.PrintWarning(fmt.Sprintf("Profile '%s' already exists.", profileName))
 
-	choice, err := util.PromptForInput("")
+	choice, err := tui.SelectChoice("Choose resolution:", []tui.Choice{
+		{Label: "Skip this profile", Value: "skip"},
+		{Label: fmt.Sprintf("Rename to '%s-%s'", profileName, profileType), Value: "rename"},
+		{Label: "Enter custom name", Value: "custom"},
+		{Label: "Overwrite existing profile", Value: "overwrite"},
+	})
 	if err != nil {
 		return "", true
 	}
 
-	switch strings.TrimSpace(choice) {
-	case "1":
+	switch choice.Value {
+	case "skip":
 		return "", true
-	case "2":
+	case "rename":
 		return fmt.Sprintf("%s-%s", profileName, profileType), false
-	case "3":
-		customName, err := util.PromptForInput("Enter new profile name: ")
-		if err != nil || strings.TrimSpace(customName) == "" {
+	case "custom":
+		customName, err := tui.PromptInput("New profile name", tui.WithRequired())
+		if err != nil {
 			return "", true
 		}
-		return strings.TrimSpace(customName), false
-	case "4":
+		return customName, false
+	case "overwrite":
 		return profileName, false
 	default:
-		util.WarnColor.Println("Invalid choice. Skipping profile.")
 		return "", true
 	}
 }

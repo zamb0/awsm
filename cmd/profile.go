@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"awsm/internal/aws"
+	"awsm/internal/tui"
 	"awsm/internal/util"
 	"encoding/json"
 	"fmt"
@@ -69,9 +70,9 @@ var profileListCmd = &cobra.Command{
 
 		if len(profiles) == 0 {
 			if !outputJSON {
-				util.WarnColor.Println("No profiles found.")
+				tui.PrintWarning("No profiles found.")
 			} else {
-				fmt.Println("[]") // Empty JSON array
+				fmt.Println("[]")
 			}
 			return nil
 		}
@@ -93,9 +94,9 @@ var profileListCmd = &cobra.Command{
 
 		if len(filtered) == 0 {
 			if !outputJSON {
-				util.WarnColor.Println("No profiles match the specified filters.")
+				tui.PrintWarning("No profiles match the specified filters.")
 			} else {
-				fmt.Println("[]") // Empty JSON array
+				fmt.Println("[]")
 			}
 			return nil
 		}
@@ -110,7 +111,7 @@ var profileListCmd = &cobra.Command{
 			util.SortBy(filtered, func(p1, p2 aws.ProfileInfo) bool {
 				return p1.Region < p2.Region
 			})
-		default: // default sort by name
+		default:
 			util.SortBy(filtered, func(p1, p2 aws.ProfileInfo) bool {
 				return p1.Name < p2.Name
 			})
@@ -120,7 +121,6 @@ var profileListCmd = &cobra.Command{
 			return outputProfilesJSON(filtered)
 		}
 
-		// Print profiles
 		if listDetailed {
 			printDetailedProfiles(filtered)
 		} else {
@@ -135,7 +135,6 @@ func outputProfilesJSON(profiles []aws.ProfileInfo) error {
 	var jsonProfiles []JSONProfileInfo
 
 	for _, p := range profiles {
-		// Extract account ID from role ARN if available
 		accountID := p.SSOAccountID
 		if accountID == "" && p.RoleARN != "" {
 			parts := strings.Split(p.RoleARN, ":")
@@ -162,50 +161,32 @@ func outputProfilesJSON(profiles []aws.ProfileInfo) error {
 		jsonProfiles = append(jsonProfiles, jsonProfile)
 	}
 
-	// Create JSON encoder with indentation for readability
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(jsonProfiles)
 }
 
 func printProfileTypeHelp() {
-	util.InfoColor.Println("AWS Profile Types:")
-	fmt.Println()
+	tui.PrintHeader("AWS Profile Types")
+	fmt.Fprintln(os.Stderr)
 	for pType, desc := range profileTypeDescriptions {
-		fmt.Printf("%s: %s\n", colorizeProfileType(pType), desc)
+		fmt.Fprintf(os.Stderr, "  %s  %s\n", tui.FormatProfileType(string(pType)), tui.MutedStyle.Render(desc))
 	}
-	fmt.Println()
-}
-
-func colorizeProfileType(pType aws.ProfileType) string {
-	switch pType {
-	case aws.ProfileTypeSSO:
-		return util.SuccessColor.Sprint(pType)
-	case aws.ProfileTypeIAM:
-		return util.InfoColor.Sprint(pType)
-	default:
-		return util.WarnColor.Sprint(pType)
-	}
+	fmt.Fprintln(os.Stderr)
 }
 
 func printSimpleProfiles(profiles []aws.ProfileInfo) {
-	fmt.Println()
+	regionStyle := lipgloss.NewStyle().Foreground(tui.Warning)
+	accountStyle := lipgloss.NewStyle().Foreground(tui.Primary)
+	activeStyle := lipgloss.NewStyle().Foreground(tui.Success).Bold(true)
+	ssoStyle := lipgloss.NewStyle().Foreground(tui.Success).Bold(true)
+	iamStyle := lipgloss.NewStyle().Foreground(tui.Secondary).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(tui.Warning).Bold(true)
+	sessionStyle := lipgloss.NewStyle().Foreground(tui.Secondary).Bold(true)
 
-	// Enhanced header with emoji and styling
-	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00D9FF")).
-		Bold(true).
-		Padding(1, 0)
-
-	// Define consistent styles for the entire function
-	regionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#F59E0B"))
-	accountStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00D9FF"))
-
-	fmt.Println(headerStyle.Render("🚀 AWS Profiles"))
-	fmt.Println(headerStyle.Render("═══════════"))
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, tui.HeaderStyle.Render("🚀 AWS Profiles"))
+	fmt.Fprintln(os.Stderr)
 
 	var ssoProfiles, iamProfiles, keyProfiles []aws.ProfileInfo
 	for _, p := range profiles {
@@ -230,164 +211,116 @@ func printSimpleProfiles(profiles []aws.ProfileInfo) {
 			ssoSessions[session] = append(ssoSessions[session], p)
 		}
 
-		ssoStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#10B981")).
-			Bold(true)
-
-		sessionStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7C3AED")).
-			Bold(true)
-
-		activeStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#10B981")).
-			Bold(true)
-
-		accountStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00D9FF"))
-
-		fmt.Println(ssoStyle.Render("● SSO Profiles"))
+		fmt.Fprintln(os.Stderr, ssoStyle.Render("● SSO Profiles"))
 
 		for session, sessionProfiles := range ssoSessions {
-			fmt.Printf("  %s\n", sessionStyle.Render("📁 "+session))
+			fmt.Fprintf(os.Stderr, "  %s\n", sessionStyle.Render("📁 "+session))
 			for _, p := range sessionProfiles {
-				fmt.Print("    ")
+				fmt.Fprint(os.Stderr, "    ")
 				if p.IsActive {
-					fmt.Print(activeStyle.Render("▶ "))
+					fmt.Fprint(os.Stderr, activeStyle.Render("▶ "))
 				} else {
-					fmt.Print("  ")
+					fmt.Fprint(os.Stderr, "  ")
 				}
-				fmt.Printf("%s ", p.Name)
+				fmt.Fprintf(os.Stderr, "%s ", p.Name)
 				if p.SSOAccountID != "" {
-					fmt.Printf("%s ", accountStyle.Render("("+p.SSOAccountID+")"))
+					fmt.Fprintf(os.Stderr, "%s ", accountStyle.Render("("+p.SSOAccountID+")"))
 				}
-				fmt.Printf("%s\n", regionStyle.Render("["+p.Region+"]"))
+				fmt.Fprintf(os.Stderr, "%s\n", regionStyle.Render("["+p.Region+"]"))
 			}
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 	}
 
-	// Enhanced IAM Profiles section
+	// IAM Profiles
 	if len(iamProfiles) > 0 {
-		iamStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7C3AED")).
-			Bold(true)
-
-		activeStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#10B981")).
-			Bold(true)
-
-		accountStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00D9FF"))
-
-		fmt.Println(iamStyle.Render("● IAM Role Profiles"))
+		fmt.Fprintln(os.Stderr, iamStyle.Render("● IAM Role Profiles"))
 		for _, p := range iamProfiles {
-			fmt.Print("  ")
+			fmt.Fprint(os.Stderr, "  ")
 			if p.IsActive {
-				fmt.Print(activeStyle.Render("▶ "))
+				fmt.Fprint(os.Stderr, activeStyle.Render("▶ "))
 			} else {
-				fmt.Print("  ")
+				fmt.Fprint(os.Stderr, "  ")
 			}
-			fmt.Printf("%s ", p.Name)
+			fmt.Fprintf(os.Stderr, "%s ", p.Name)
 			if p.RoleARN != "" {
 				parts := strings.Split(p.RoleARN, ":")
 				if len(parts) >= 5 {
-					fmt.Printf("%s ", accountStyle.Render("("+parts[4]+")"))
+					fmt.Fprintf(os.Stderr, "%s ", accountStyle.Render("("+parts[4]+")"))
 				}
 			}
-			fmt.Printf("%s\n", regionStyle.Render("["+p.Region+"]"))
+			fmt.Fprintf(os.Stderr, "%s\n", regionStyle.Render("["+p.Region+"]"))
 		}
-		fmt.Println()
+		fmt.Fprintln(os.Stderr)
 	}
 
-	// Enhanced Key Profiles section
+	// Key Profiles
 	if len(keyProfiles) > 0 {
-		keyStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F59E0B")).
-			Bold(true)
-
-		activeStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#10B981")).
-			Bold(true)
-
-		fmt.Println(keyStyle.Render("● Static Key Profiles"))
+		fmt.Fprintln(os.Stderr, keyStyle.Render("● Static Key Profiles"))
 		for _, p := range keyProfiles {
-			fmt.Print("  ")
+			fmt.Fprint(os.Stderr, "  ")
 			if p.IsActive {
-				fmt.Print(activeStyle.Render("▶ "))
+				fmt.Fprint(os.Stderr, activeStyle.Render("▶ "))
 			} else {
-				fmt.Print("  ")
+				fmt.Fprint(os.Stderr, "  ")
 			}
-			fmt.Printf("%s ", p.Name)
-			fmt.Printf("%s\n", regionStyle.Render("["+p.Region+"]"))
+			fmt.Fprintf(os.Stderr, "%s ", p.Name)
+			fmt.Fprintf(os.Stderr, "%s\n", regionStyle.Render("["+p.Region+"]"))
 		}
-		fmt.Println()
+		fmt.Fprintln(os.Stderr)
 	}
 
-	// Print legend
-	fmt.Println("Legend:")
-	util.SuccessColor.Print("▶ ")
-	fmt.Println("Active profile")
-	fmt.Print("● ")
-	fmt.Println("Profile type indicator")
-	fmt.Print(accountStyle.Render("(123456789012) "))
-	fmt.Println("AWS Account ID")
-	fmt.Print(regionStyle.Render("[us-east-1] "))
-	fmt.Println("Region")
+	// Legend
+	fmt.Fprintln(os.Stderr, tui.MutedStyle.Render("  ▶ active • (123456789012) account • [region]"))
 }
 
 func printDetailedProfiles(profiles []aws.ProfileInfo) {
-	fmt.Println()
-	util.InfoColor.Println("AWS Profiles (Detailed)")
-	util.InfoColor.Println("═════════════════════")
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
+	tui.PrintHeader("🚀 AWS Profiles (Detailed)")
+	fmt.Fprintln(os.Stderr)
 
 	for i, p := range profiles {
-		// Profile name and status
 		if p.IsActive {
-			util.SuccessColor.Print("▶ ")
+			fmt.Fprintf(os.Stderr, "  %s ", tui.SuccessStyle.Render("▶"))
 		} else {
-			fmt.Print("  ")
+			fmt.Fprint(os.Stderr, "    ")
 		}
-		util.InfoColor.Printf("Profile: %s\n", p.Name)
+		fmt.Fprintf(os.Stderr, "%s  %s\n",
+			tui.SubheaderStyle.Render(p.Name),
+			tui.FormatProfileType(string(p.Type)))
 
-		// Type-specific details with indent
-		fmt.Print("    ")
 		switch p.Type {
 		case aws.ProfileTypeSSO:
-			util.SuccessColor.Print("● SSO Profile\n")
-			fmt.Printf("    ├── Account: %s\n", p.SSOAccountID)
-			fmt.Printf("    ├── Region: %s\n", p.Region)
+			tui.PrintKeyValue("Account", p.SSOAccountID)
+			tui.PrintKeyValue("Region", p.Region)
 			if p.SSOSession != "" {
-				fmt.Printf("    ├── Session: %s\n", p.SSOSession)
+				tui.PrintKeyValue("Session", p.SSOSession)
 			}
 			if p.SSORoleName != "" {
-				fmt.Printf("    └── Role: %s\n", p.SSORoleName)
+				tui.PrintKeyValue("Role", p.SSORoleName)
 			}
 
 		case aws.ProfileTypeIAM:
-			util.InfoColor.Print("● IAM Profile\n")
 			if p.RoleARN != "" {
-				fmt.Printf("    ├── Role: %s\n", p.RoleARN)
+				tui.PrintKeyValue("Role ARN", p.RoleARN)
 			}
-			fmt.Printf("    ├── Region: %s\n", p.Region)
+			tui.PrintKeyValue("Region", p.Region)
 			if p.MFASerial != "" {
-				fmt.Printf("    ├── MFA: %s\n", p.MFASerial)
+				tui.PrintKeyValue("MFA", p.MFASerial)
 			}
 			if p.SourceProfile != "" {
-				fmt.Printf("    └── Source: %s\n", p.SourceProfile)
+				tui.PrintKeyValue("Source", p.SourceProfile)
 			}
 
 		case aws.ProfileTypeKey:
-			util.WarnColor.Print("● Static Key Profile\n")
-			fmt.Printf("    └── Region: %s\n", p.Region)
+			tui.PrintKeyValue("Region", p.Region)
 		}
 
-		// Add spacing between profiles
 		if i < len(profiles)-1 {
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
 }
 
 func init() {

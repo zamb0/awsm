@@ -13,7 +13,7 @@ import (
 
 	"awsm/internal/aws"
 	"awsm/internal/browser"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 
 	"github.com/spf13/cobra"
 )
@@ -62,8 +62,7 @@ Make sure to set a session first with 'awsm profile set <profile-name>' or use -
 		// Skip if we have valid cached credentials
 		var mfaToken string
 		if needsMFA, mfaSerial, mfaErr := aws.ProfileNeedsMFA(currentProfile); mfaErr == nil && needsMFA && !aws.HasValidCachedCredentials(currentProfile) {
-			prompt := fmt.Sprintf("Enter MFA token for %s: ", util.BoldColor.Sprint(mfaSerial))
-			mfaToken, _ = util.PromptForInput(prompt)
+			mfaToken, _ = tui.PromptInput(fmt.Sprintf("MFA token for %s", tui.FormatBold(mfaSerial)))
 		}
 
 		// Retrieve credentials using internal helper to ensure freshness for chained profiles
@@ -72,7 +71,7 @@ Make sure to set a session first with 'awsm profile set <profile-name>' or use -
 			// Check if this is a credential expiration error
 			if errors.Is(err, aws.ErrSsoSessionExpired) || strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "InvalidGrantException") {
 				// Try to refresh the session
-				util.WarnColor.Fprintln(os.Stderr, "Credentials expired. Attempting to refresh session...")
+				tui.PrintWarning("Credentials expired. Attempting to refresh session...")
 
 				// Get SSO session name for the current profile
 				ssoSession, err := aws.GetSsoSessionForProfile(currentProfile)
@@ -175,7 +174,7 @@ Make sure to set a session first with 'awsm profile set <profile-name>' or use -
 		}
 		if region == "" {
 			region = "us-east-1"
-			util.WarnColor.Fprintln(os.Stderr, "No region found, defaulting to us-east-1")
+			tui.PrintWarning("No region found, defaulting to us-east-1")
 		}
 		destination := fmt.Sprintf("https://%s.console.aws.amazon.com/console/home?region=%s", region, region)
 		loginURL := fmt.Sprintf("https://signin.aws.amazon.com/federation?Action=login&Issuer=awsm&Destination=%s&SigninToken=%s", url.QueryEscape(destination), url.QueryEscape(tokenResp.SigninToken))

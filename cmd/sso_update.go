@@ -12,29 +12,30 @@ import (
 
 	"awsm/internal/aws"
 	awsmConfig "awsm/internal/config"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
 	"github.com/spf13/cobra"
 )
 
-var generateCmd = &cobra.Command{
-	Use:   "generate <sso-session-name>",
-	Short: "Generates AWS config profiles for all accessible SSO accounts and roles",
-	Long: `This powerful command logs into an SSO session, discovers all accounts and roles
-you have access to, and generates the corresponding AWS profile configurations.
+var ssoUpdateCmd = &cobra.Command{
+	Use:   "update <sso-session-name>",
+	Short: "Syncs AWS config profiles for all accessible SSO accounts and roles",
+	Long: `Logs into an SSO session, discovers all accounts and roles you have access to,
+and syncs the corresponding AWS profile configurations.
 
-The generated profiles are saved to '~/.aws/config' using the region from the SSO session.
-Existing profiles are automatically updated without prompting.`,
+Profiles are saved to '~/.aws/config' grouped by session and account.
+Stale profiles (roles no longer accessible) are automatically removed.`,
+	Aliases:           []string{"generate"},
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeSSOSessions,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runSSOGenerate(args[0])
+		return runSSOUpdate(args[0])
 	},
 }
 
-func runSSOGenerate(ssoSession string) error {
+func runSSOUpdate(ssoSession string) error {
 	// Get region from SSO session configuration
 	awsRegion, err := getSSORegionForSession(ssoSession)
 	if err != nil {
@@ -55,13 +56,13 @@ func runSSOGenerate(ssoSession string) error {
 	}
 
 	// 2. Find the cached access token from the filesystem
-	util.InfoColor.Println("Finding cached SSO access token...")
+	tui.PrintStep("Finding cached SSO access token...")
 
 	accessToken, err := findLatestSsoToken(filepath.Join(home, ".aws", "sso", "cache"))
 	if err != nil {
 		return fmt.Errorf("could not find cached SSO token: %w", err)
 	}
-	util.SuccessColor.Println("✔ Found access token.")
+	tui.PrintSuccess("Found access token.")
 
 	// 3. Create SSO client with the region from session configuration
 
@@ -72,7 +73,7 @@ func runSSOGenerate(ssoSession string) error {
 	ssoClient := sso.NewFromConfig(cfg)
 
 	// 4. List Accounts using the access token
-	util.InfoColor.Println("Fetching all accessible accounts...")
+	tui.PrintStep("Fetching all accessible accounts...")
 	var accounts []*sso.ListAccountsOutput
 
 	accountsPaginator := sso.NewListAccountsPaginator(ssoClient, &sso.ListAccountsInput{
@@ -93,27 +94,30 @@ func runSSOGenerate(ssoSession string) error {
 	for _, page := range accounts {
 		totalAccounts += len(page.AccountList)
 	}
-	util.SuccessColor.Printf("✔ Found %d accounts.\n", totalAccounts)
+	tui.PrintSuccess(fmt.Sprintf("Found %d accounts.", totalAccounts))
 
 	// Read existing config
 	existingConfig, err := awsmConfig.ReadConfigFile(outputFile)
 	if err != nil {
-		// If file doesn't exist, we'll start with empty config
 		existingConfig = ""
 	}
 
-	// Parse existing profile names and their content
-	existingProfiles, existingProfileContent := awsmConfig.ParseExistingProfiles(existingConfig)
+	// Remove all existing profiles for this SSO session (clean slate approach)
+	tui.PrintStep(fmt.Sprintf("Removing old profiles for session '%s'...", ssoSession))
+	existingConfig, removedProfiles := awsmConfig.RemoveAllProfilesForSession(existingConfig, ssoSession)
+	if len(removedProfiles) > 0 {
+		tui.PrintMuted(fmt.Sprintf("Removed %d old profiles.", len(removedProfiles)))
+	}
 
-	// Build new profiles
+	// Build new profiles from discovered accounts/roles
 	var newProfilesBuilder strings.Builder
 	cleaner := regexp.MustCompile(`[^a-zA-Z0-9-]`)
 	profileCount := 0
 
-	util.InfoColor.Println("Generating profiles...")
+	tui.PrintStep("Generating profiles...")
 	for _, page := range accounts {
 		for _, acc := range page.AccountList {
-			util.InfoColor.Fprintf(os.Stderr, "  -> Processing account: %s (%s)\n", *acc.AccountName, *acc.AccountId)
+			tui.PrintStep(fmt.Sprintf("Processing account: %s (%s)", *acc.AccountName, *acc.AccountId))
 
 			rolesPaginator := sso.NewListAccountRolesPaginator(ssoClient, &sso.ListAccountRolesInput{
 				AccessToken: &accessToken,
@@ -122,11 +126,10 @@ func runSSOGenerate(ssoSession string) error {
 			for rolesPaginator.HasMorePages() {
 				rolesPage, err := rolesPaginator.NextPage(context.TODO())
 				if err != nil {
-					util.ErrorColor.Fprintf(os.Stderr, "    Could not list roles for account %s: %v\n", *acc.AccountId, err)
+					tui.PrintError(fmt.Sprintf("Could not list roles for account %s: %v", *acc.AccountId, err))
 					continue
 				}
 				for _, role := range rolesPage.RoleList {
-					// Sanitize names for the profile
 					cleanAccountName := strings.ToLower(*acc.AccountName)
 					cleanAccountName = cleaner.ReplaceAllString(cleanAccountName, "-")
 					cleanRoleName := strings.ToLower(*role.RoleName)
@@ -134,33 +137,8 @@ func runSSOGenerate(ssoSession string) error {
 
 					profileName := fmt.Sprintf("%s-%s", cleanAccountName, cleanRoleName)
 
-					// Generate the new profile content
 					newProfileContent := fmt.Sprintf("[profile %s]\nsso_session = %s\nsso_account_id = %s\nsso_role_name = %s\nregion = %s\n\n",
 						profileName, ssoSession, *acc.AccountId, *role.RoleName, awsRegion)
-
-					if existingProfiles[profileName] {
-						// Check if the profile content is different
-						if existingContent, exists := existingProfileContent[profileName]; exists {
-							// Extract just the configuration lines for comparison
-							existingLines := awsmConfig.ExtractProfileConfig(existingContent)
-							newLines := awsmConfig.ExtractProfileConfig(newProfileContent)
-
-							if existingLines == newLines {
-								// Profile is identical, skip it
-								util.InfoColor.Fprintf(os.Stderr, "    Profile '%s' is up to date, skipping\n", profileName)
-								continue
-							} else {
-								// Profile content is different, update it
-								util.InfoColor.Fprintf(os.Stderr, "    Updating profile '%s' with new configuration\n", profileName)
-								// Remove the old profile from existing config
-								existingConfig = awsmConfig.RemoveProfileFromConfig(existingConfig, profileName)
-							}
-						} else {
-							// Profile exists but we couldn't find its content, update it anyway
-							util.InfoColor.Fprintf(os.Stderr, "    Updating profile '%s'\n", profileName)
-							existingConfig = awsmConfig.RemoveProfileFromConfig(existingConfig, profileName)
-						}
-					}
 
 					newProfilesBuilder.WriteString(newProfileContent)
 					profileCount++
@@ -170,30 +148,34 @@ func runSSOGenerate(ssoSession string) error {
 	}
 
 	// Write the updated config
-	if newProfilesBuilder.Len() > 0 {
-		// Combine existing config (with removed profiles if updating) and new profiles
-		finalConfig := existingConfig
-		newContent := newProfilesBuilder.String()
-		if len(finalConfig) > 0 {
-			if !strings.HasSuffix(finalConfig, "\n") {
-				finalConfig += "\n"
-			}
-			finalConfig += "\n" + newContent
-		} else {
-			finalConfig = newContent
+	finalConfig := existingConfig
+	newContent := newProfilesBuilder.String()
+	if len(finalConfig) > 0 {
+		if !strings.HasSuffix(finalConfig, "\n") {
+			finalConfig += "\n"
 		}
-
-		// Write the complete config file
-		if err := awsmConfig.WriteConfigFile(outputFile, finalConfig); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outputFile, err)
-		}
-
-		util.SuccessColor.Printf("\n✔ Done! %d profiles updated/added to %s\n", profileCount, util.BoldColor.Sprint(outputFile))
+		finalConfig += "\n" + newContent
 	} else {
-		util.InfoColor.Println("All profiles are up to date.")
+		finalConfig = newContent
 	}
 
-	util.InfoColor.Println("You can now use the new profiles from your ~/.aws/config.")
+	if err := awsmConfig.WriteConfigFile(outputFile, finalConfig); err != nil {
+		return fmt.Errorf("failed to write %s: %w", outputFile, err)
+	}
+
+	// Reorganize the config file for readability
+	tui.PrintStep("Organizing config file...")
+	if err := awsmConfig.OrganizeConfigFile(outputFile); err != nil {
+		tui.PrintWarning(fmt.Sprintf("Could not organize config file: %v", err))
+	}
+
+	tui.PrintSuccess(fmt.Sprintf("Done! %d profiles synced to %s", profileCount, tui.FormatBold(outputFile)))
+	if len(removedProfiles) > profileCount {
+		stale := len(removedProfiles) - profileCount
+		tui.PrintInfo(fmt.Sprintf("Cleaned up %d stale profiles no longer accessible.", stale))
+	}
+
+	tui.PrintMuted("You can now use the new profiles from your ~/.aws/config.")
 	return nil
 }
 
@@ -280,5 +262,5 @@ func findLatestSsoToken(cacheDir string) (string, error) {
 }
 
 func init() {
-	ssoCmd.AddCommand(generateCmd)
+	ssoCmd.AddCommand(ssoUpdateCmd)
 }

@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"awsm/internal/aws"
-	"awsm/internal/util"
+	"awsm/internal/tui"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,7 +32,7 @@ var importCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		importFile := args[0]
 
-		util.InfoColor.Printf("Importing AWS configuration from: %s\n", util.BoldColor.Sprint(importFile))
+		tui.PrintInfo(fmt.Sprintf("Importing AWS configuration from: %s", tui.FormatBold(importFile)))
 
 		// Read import file
 		file, err := os.Open(importFile)
@@ -48,16 +47,16 @@ var importCmd = &cobra.Command{
 			return fmt.Errorf("failed to parse import file: %w", err)
 		}
 
-		util.InfoColor.Printf("Import file contains: %d profiles, %d SSO sessions\n",
-			len(exportData.Profiles), len(exportData.SSOSessions))
+		tui.PrintInfo(fmt.Sprintf("Import file contains: %d profiles, %d SSO sessions",
+			len(exportData.Profiles), len(exportData.SSOSessions)))
 
 		if !importForce {
-			confirm, err := util.PromptForInput("Continue with import? This may overwrite existing configurations (y/N): ")
+			confirmed, err := tui.Confirm("Continue with import? This may overwrite existing configurations")
 			if err != nil {
 				return err
 			}
-			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-				util.InfoColor.Println("Import cancelled")
+			if !confirmed {
+				tui.PrintMuted("Import cancelled")
 				return nil
 			}
 		}
@@ -65,12 +64,12 @@ var importCmd = &cobra.Command{
 		// Check for restore mode
 		if importRestoreFiles {
 			if !importForce {
-				confirm, err := util.PromptForInput("WARNING: --restore-files will OVERWRITE your local config and credentials files entirely. Continue? (y/N): ")
+				confirmed, err := tui.ConfirmDanger("--restore-files will OVERWRITE your local config and credentials files entirely. Continue?")
 				if err != nil {
 					return err
 				}
-				if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-					util.InfoColor.Println("Import cancelled")
+				if !confirmed {
+					tui.PrintMuted("Import cancelled")
 					return nil
 				}
 			}
@@ -79,7 +78,7 @@ var importCmd = &cobra.Command{
 				return fmt.Errorf("failed to restore files: %w", err)
 			}
 
-			util.SuccessColor.Println("✔ AWS configuration files restored successfully (original files moved to .bak)")
+			tui.PrintSuccess("AWS configuration files restored successfully (original files moved to .bak)")
 			return nil
 		}
 
@@ -87,9 +86,9 @@ var importCmd = &cobra.Command{
 		importedSessions := 0
 		for _, session := range exportData.SSOSessions {
 			if err := aws.ImportSSOSession(session); err != nil {
-				util.ErrorColor.Printf("Failed to import SSO session '%s': %v\n", session.Name, err)
+				tui.PrintError(fmt.Sprintf("Failed to import SSO session '%s': %v", session.Name, err))
 			} else {
-				util.SuccessColor.Printf("✔ Imported SSO session '%s'\n", session.Name)
+				tui.PrintSuccess(fmt.Sprintf("Imported SSO session '%s'", session.Name))
 				importedSessions++
 			}
 		}
@@ -98,15 +97,15 @@ var importCmd = &cobra.Command{
 		importedProfiles := 0
 		for _, profile := range exportData.Profiles {
 			if err := aws.ImportProfile(profile); err != nil {
-				util.ErrorColor.Printf("Failed to import profile '%s': %v\n", profile.Name, err)
+				tui.PrintError(fmt.Sprintf("Failed to import profile '%s': %v", profile.Name, err))
 			} else {
-				util.SuccessColor.Printf("✔ Imported profile '%s'\n", profile.Name)
+				tui.PrintSuccess(fmt.Sprintf("Imported profile '%s'", profile.Name))
 				importedProfiles++
 			}
 		}
 
-		util.SuccessColor.Printf("✔ Import complete: %d profiles, %d SSO sessions imported (Merge Mode)\n",
-			importedProfiles, importedSessions)
+		tui.PrintSuccess(fmt.Sprintf("Import complete: %d profiles, %d SSO sessions imported (Merge Mode)",
+			importedProfiles, importedSessions))
 		return nil
 	},
 }
