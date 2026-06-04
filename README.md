@@ -17,7 +17,7 @@ A powerful CLI tool to simplify working with AWS profiles, credentials, and sess
 - **Region Management**: Easily switch between AWS regions
 - **Search & Discovery**: Powerful search across profiles, account IDs, and SSO sessions with partial matching
 - **Browser Integration**: Open the console in specific Chrome profiles or Firefox containers
-- **Firefox Extension**: First-party [`AWSM Container Opener`](https://addons.mozilla.org/firefox/addon/awsm-container/) add-on published on AMO; `awsm extension install` opens the listing for 1-click permanent install with auto-updates
+- **Firefox Extension**: First-party [`AWSM Container Opener`](https://addons.mozilla.org/firefox/addon/awsm-container-opener/) add-on published on AMO; `awsm extension install` opens the listing for 1-click permanent install with auto-updates
 - **Shell Completion**: Full autocompletion support for bash, zsh, fish, and PowerShell
 - **Interactive UI**: Beautiful terminal interface with responsive design
 - **Import/Export**: Backup and restore your AWS configuration

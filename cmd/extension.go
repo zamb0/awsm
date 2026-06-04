@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	amoListingURL    = "https://addons.mozilla.org/firefox/addon/awsm-container/"
+	amoListingURL    = "https://addons.mozilla.org/firefox/addon/awsm-container-opener/"
 	extensionRepoURL = "https://github.com/AleG03/awsm-firefox-container"
 )
 
