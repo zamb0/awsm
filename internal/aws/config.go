@@ -542,6 +542,29 @@ func UpdateIAMRoleProfile(profileName, roleArn, sourceProfile, mfaSerial, region
 	return cfg.SaveTo(configPath)
 }
 
+// UpdateMFASerial updates only the mfa_serial key for an existing profile.
+func UpdateMFASerial(profileName, mfaSerial string) error {
+	configPath, err := GetAWSConfigPath()
+	if err != nil {
+		return err
+	}
+	cfg, err := ini.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config file: %w", err)
+	}
+	section, err := getProfileSection(cfg, profileName)
+	if err != nil {
+		return err
+	}
+	if mfaSerial != "" {
+		section.Key("mfa_serial").SetValue(mfaSerial)
+	} else {
+		section.DeleteKey("mfa_serial")
+	}
+	InvalidateProfileCache()
+	return cfg.SaveTo(configPath)
+}
+
 // DeleteProfile removes a profile from both config and credentials files
 func DeleteProfile(profileName string) error {
 	// Delete from config file

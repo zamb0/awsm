@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"awsm/internal/aws"
+	"awsm/internal/mfa"
 	"awsm/internal/tui"
 )
 
@@ -16,14 +17,18 @@ import (
 //
 // Returns the credentials, whether they are static, and any error.
 func ensureCredentialsWithLogin(ctx context.Context, profileName string) (*aws.TempCredentials, bool, error) {
-	// Handle MFA prompt before any spinner so stdin remains usable.
+	// Handle MFA before any spinner so stdin remains usable.
 	var mfaToken string
 	if needsMFA, mfaSerial, mfaErr := aws.ProfileNeedsMFA(profileName); mfaErr == nil && needsMFA && !aws.HasValidCachedCredentials(profileName) {
-		token, err := tui.PromptInput(fmt.Sprintf("MFA token for %s", tui.FormatBold(mfaSerial)))
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to read MFA token: %w", err)
+		if code, totpErr := mfa.GenerateTOTP(profileName); totpErr == nil {
+			mfaToken = code
+		} else {
+			token, err := tui.PromptInput(fmt.Sprintf("MFA token for %s", tui.FormatBold(mfaSerial)))
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to read MFA token: %w", err)
+			}
+			mfaToken = token
 		}
-		mfaToken = token
 	}
 
 	var (

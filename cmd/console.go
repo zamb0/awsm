@@ -13,6 +13,7 @@ import (
 
 	"awsm/internal/aws"
 	"awsm/internal/browser"
+	"awsm/internal/mfa"
 	"awsm/internal/tui"
 
 	"github.com/spf13/cobra"
@@ -58,11 +59,15 @@ Make sure to set a session first with 'awsm profile set <profile-name>' or use -
 			}
 		}
 
-		// Check if profile needs MFA and prompt before any SDK call
-		// Skip if we have valid cached credentials
+		// Check if profile needs MFA — auto-generate from stored TOTP secret, else prompt.
+		// Skip entirely if we have valid cached credentials.
 		var mfaToken string
 		if needsMFA, mfaSerial, mfaErr := aws.ProfileNeedsMFA(currentProfile); mfaErr == nil && needsMFA && !aws.HasValidCachedCredentials(currentProfile) {
-			mfaToken, _ = tui.PromptInput(fmt.Sprintf("MFA token for %s", tui.FormatBold(mfaSerial)))
+			if code, totpErr := mfa.GenerateTOTP(currentProfile); totpErr == nil {
+				mfaToken = code
+			} else {
+				mfaToken, _ = tui.PromptInput(fmt.Sprintf("MFA token for %s", tui.FormatBold(mfaSerial)))
+			}
 		}
 
 		// Retrieve credentials using internal helper to ensure freshness for chained profiles
